@@ -3,6 +3,7 @@ module Tests.ICal
 open System
 open Xunit
 open Haumohio.ICal
+open Haumohio.ICal.Publishing
 
 let ANON_PRODID  = {company = "Abc Co."; product="Xyz"; version=Version(1,2,3,4); language="en"}
 let ANON_VEVENT = 

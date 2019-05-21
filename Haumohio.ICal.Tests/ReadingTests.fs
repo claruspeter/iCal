@@ -1,9 +1,10 @@
 module ICal.ReadingTests
 
 open System
+open System.IO
 open Xunit
 open Haumohio.ICal
-open System.IO
+open Haumohio.ICal.Parsing
 
 let ANON_PRODID  = {company = "Abc Co."; product="Xyz"; version=Version(1,2,3,4); language="en"}
 let ANON_VEVENT = 
@@ -59,4 +60,18 @@ let ``can read cal header`` () =
         |> fun s -> new StringReader(s)
         |> parse
     Assert.Equal(2.0m, result.version)
+    Assert.Equal("Abc Co.", result.prodid.company)
+    Assert.Equal("Xyz", result.prodid.product)
+    Assert.Equal(Version(1, 2, 3, 4), result.prodid.version)
+    Assert.Equal("EN", result.prodid.language)
+    Assert.Equal(CalMethod.PUBLISH, result.method)
+    Assert.Equal(CalScale.GREGORIAN, result.calScale)
     
+
+[<Fact>]
+let ``can read the right number of cal events`` () =
+    let result = 
+        RESULT_VCAL + RESULT_VEVENT + END_VEVENT + RESULT_VEVENT + END_VEVENT  + RESULT_VEVENT + END_VEVENT + END_VCAL
+        |> fun s -> new StringReader(s)
+        |> parse
+    Assert.Equal(3, result.events.Length)
