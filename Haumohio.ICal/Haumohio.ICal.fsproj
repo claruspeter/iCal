@@ -10,4 +10,22 @@
     <Compile Include="parsing.fs" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <Authors>Haumohio</Authors>
+    <Company>Haumohio</Company>
+    <Product>Haumohio.ICal</Product>
+    <PackageId>Haumohio.ICal</PackageId>
+    <Version>0.1.0.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <NeutralLanguage>en</NeutralLanguage>
+    <Description>I/O for calendar data (ical/vcal)</Description>
+    <Copyright>Copyright</Copyright>
+    <PackageLicenseUrl>https://github.com/claruspeter/iCal</PackageLicenseUrl>
+    <PackageProjectUrl>https://github.com/claruspeter/iCal</PackageProjectUrl>
+    <PackageTags>F#,ICal,VCal,Calendar</PackageTags>
+    <PackageReleaseNotes></PackageReleaseNotes>
+  </PropertyGroup>
+
+
 </Project>
