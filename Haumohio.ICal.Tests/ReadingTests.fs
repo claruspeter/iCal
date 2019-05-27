@@ -15,13 +15,13 @@ let ANON_VEVENT =
         status = CONFIRMED
         cls = PUBLIC
         transp = TRANSPARENT
-        dtStart = DateTime(2019,1,1,8,0,0)
-        dtEnd = DateTime(2019,1,1,9,30,0)
-        dtStamp = DateTime(2019,1,1,9,31,0)
+        dtStart = DateTime(2019,1,1,8,0,0, DateTimeKind.Utc)
+        dtEnd = DateTime(2019,1,1,9,30,0, DateTimeKind.Utc)
+        dtStamp = DateTime(2019,1,1,9,31,0, DateTimeKind.Utc)
+        lastModified = DateTime(2019,1,2,12,0,0, DateTimeKind.Utc)
         description = "Desc."
-        lastModified = DateTime(2019,1,2,0,0,0)
         location = "The location"
-        url = Uri("http://test.com")
+        url = Uri("http://test.com/")
     }
 let ANON_VCAL = {
         version = 2.0m
@@ -43,18 +43,20 @@ let RESULT_VEVENT =
     "STATUS:CONFIRMED\n" +
     "CLASS:PUBLIC\n" +
     "TRANSP:TRANSPARENT\n" +
-    "DTSTART:20190101T080000\n" +
-    "DTEND:20190101T093000\n" +
-    "DTSTAMP:20190101T093100\n" +
-    "LAST-MODIFIED:20190102T120000\n" +
+    "DTSTART:20190101T080000Z\n" +
+    "DTEND:20190101T093000Z\n" +
+    "DTSTAMP:20190101T093100Z\n" +
+    "LAST-MODIFIED:20190102T120000Z\n" +
     "DESCRIPTION:Desc.\n" +
     "LOCATION:The location\n" +
-    "URL:http://test.com/\n"
+    "URL:http://test.com\n"
 let END_VEVENT = "END:VEVENT\n"
 
+let makeEvent i =
+    (RESULT_VEVENT + END_VEVENT).Replace("SEQUENCE:0", "SEQUENCE:" + i.ToString())
 
 [<Fact>]
-let ``can read cal header`` () =
+let ``can read just cal header`` () =
     let result = 
         RESULT_VCAL + END_VCAL
         |> fun s -> new StringReader(s)
@@ -71,7 +73,19 @@ let ``can read cal header`` () =
 [<Fact>]
 let ``can read the right number of cal events`` () =
     let result = 
-        RESULT_VCAL + RESULT_VEVENT + END_VEVENT + RESULT_VEVENT + END_VEVENT  + RESULT_VEVENT + END_VEVENT + END_VCAL
+        RESULT_VCAL + makeEvent(12) + makeEvent(14) + makeEvent(16) + END_VCAL
         |> fun s -> new StringReader(s)
         |> parse
     Assert.Equal(3, result.events.Length)
+    Assert.Equal(12,  result.events.[0].sequence)
+    Assert.Equal(14,  result.events.[1].sequence)
+    Assert.Equal(16,  result.events.[2].sequence)
+
+[<Fact>]
+let ``can read event values`` () =
+    let result = 
+        RESULT_VCAL + makeEvent(0) + END_VCAL
+        |> fun s -> new StringReader(s)
+        |> parse
+    let evt = result.events.[0]
+    Assert.Equal(ANON_VEVENT, evt)
