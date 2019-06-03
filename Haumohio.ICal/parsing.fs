@@ -4,12 +4,18 @@ open System
 open System.Collections.Generic
 open System.IO
 open Microsoft.FSharp.Reflection
-open System.Collections.Generic
 open System.Globalization
 
-type Section = {
+
+type IndexedSection = {
     name: string;
+    values: IDictionary<string,string>
+    children: IDictionary<string,IndexedSection list>
+}
+
+type private Section = {
     values: (string * string) list
+    children: IndexedSection list
 }
 
 let toString (x:'a) = 
@@ -21,6 +27,21 @@ let fromString<'a> (s:string) =
     |[|case|] -> Some(FSharpValue.MakeUnion(case,[||]) :?> 'a)
     |_ -> None
 
+let lookupWithDefault<'a, 'b> (theDefault: 'b) (key:'a) (dic:IDictionary<'a, 'b>) : 'b =
+    match dic.ContainsKey(key) with
+    | true -> dic.[key]
+    | false -> theDefault
+
+let private index (section:Section) =
+    let name = section.values |> Seq.find(fun x -> (fst x) = "BEGIN") |> snd
+    let values = section.values |> List.filter (fun x -> (fst x) <> "BEGIN" && (fst x) <> "END") |> dict
+    let children = section.children |> List.groupBy (fun s -> s.name) |> dict
+    {
+        name = name
+        values = values
+        children = children
+    }
+
 
 let private readLine (stream:TextReader) =
     let line = stream.ReadLine()
@@ -30,32 +51,35 @@ let private readLine (stream:TextReader) =
         let colonAt = line.IndexOf(':')
         (line.Substring(0, colonAt), line.Substring(colonAt + 1)) |> Some
 
-let rec private readIntoSection stream section =
+let rec private readIntoSection stream (section:Section) : IndexedSection =
     let line = readLine stream
     match line with 
-    | None -> None
+    | None -> section |> index
     | Some line ->
         match fst line, section.values.Length with 
         | beginner, 0 when beginner.StartsWith("BEGIN") -> 
             // printfn "\n%A is my beginner" line
-            readIntoSection stream {section with name = snd line}
+            let updated = {section with values = section.values @ [line]}
+            readIntoSection stream updated
         | beginner, _ when beginner.StartsWith("BEGIN") -> 
             // printfn "\n%A is a beginner" line
-            Some section
+            let subsection = readIntoSection stream {values=[line]; children = []}
+            let updated = {section with children = section.children @ [subsection]}
+            readIntoSection stream updated
         | ender, 0 when ender.StartsWith("END") -> 
-            printfn "%A is an ender of a container" line
-            None
+            // printfn "%A is a container ender" line
+            section |> index
         | ender, _ when ender.StartsWith("END") -> 
             // printfn "%A is an ender" line
-            Some {section with name = snd line}
+            section |> index
         | _, _ -> 
             // printfn "%A is a value" line
-            let updated = {section with values = section.values @ [(fst line, snd line)]}
+            let updated = {section with values = section.values @ [line]}
             readIntoSection stream updated
         
 
 let private readSection (stream: TextReader) =
-    {name = ""; values=[]}
+    {values=[]; children=[]}
     |> readIntoSection stream
 
 let private parseProduct (s:string) =
@@ -75,43 +99,34 @@ let private parseTime (s:string) =
     | x ->
         DateTime.ParseExact( x, [|"yyyyMMddTHHmmss"; "yyyyMMddTHHmmsszzz"|], CultureInfo.InvariantCulture, DateTimeStyles.None)
 
-let private parseEvent (section:Section) =
-    let values = section.values |> dict
+let private parseEvent (section:IndexedSection) =
     {
-        summary = values.["SUMMARY"] 
-        uid  = values.["UID"] 
-        sequence = values.["SEQUENCE"] |> Int32.Parse
-        status = values.["STATUS"] |> fromString<EventStatus> |> Option.defaultValue EventStatus.CONFIRMED
-        cls = values.["CLASS"] |> fromString<EventClass> |> Option.defaultValue EventClass.PUBLIC
-        transp = values.["TRANSP"] |> fromString<EventTransp> |> Option.defaultValue EventTransp.TRANSPARENT
-        dtStart = values.["DTSTART"] |> parseTime
-        dtEnd = values.["DTEND"] |> parseTime
-        dtStamp = values.["DTSTAMP"] |> parseTime
-        lastModified = values.["LAST-MODIFIED"] |> parseTime
-        description = values.["DESCRIPTION"] 
-        location = values.["LOCATION"] 
-        url = Uri(values.["URL"], UriKind.Absolute)
+        summary = section.values.["SUMMARY"] 
+        uid  = section.values.["UID"] 
+        sequence = section.values.["SEQUENCE"] |> Int32.Parse
+        status = section.values.["STATUS"] |> fromString<EventStatus> |> Option.defaultValue EventStatus.CONFIRMED
+        cls = section.values.["CLASS"] |> fromString<EventClass> |> Option.defaultValue EventClass.PUBLIC
+        transp = section.values.["TRANSP"] |> fromString<EventTransp> |> Option.defaultValue EventTransp.TRANSPARENT
+        dtStart = section.values.["DTSTART"] |> parseTime
+        dtEnd = section.values.["DTEND"] |> parseTime
+        dtStamp = section.values.["DTSTAMP"] |> parseTime
+        lastModified = section.values.["LAST-MODIFIED"] |> parseTime
+        description = section.values.["DESCRIPTION"] 
+        location = section.values.["LOCATION"] 
+        url = Uri(section.values.["URL"], UriKind.Absolute)
     }
 
 let parse (stream:TextReader) =
-    let section = readSection stream
-    match section with
-    | None -> failwith "Calendar not found in stream."
-    | Some section ->
-        let values = section.values |> dict
-        let events = 
-            stream
-            |> Seq.unfold 
-                (fun stream' -> 
-                    match readSection stream' with
-                    | None -> None
-                    | Some e -> (e |> parseEvent, stream') |> Some
-                )
+    let cal = readSection stream
+    let events = 
+        cal.children 
+        |> lookupWithDefault [] "VEVENT"
+        |> List.map parseEvent
 
-        {
-            version = values.["VERSION"] |> Decimal.Parse
-            prodid = values.["PRODID"] |> parseProduct
-            calScale = values.["CALSCALE"] |> fromString<CalScale> |> Option.defaultValue CalScale.GREGORIAN
-            method =values.["METHOD"] |> fromString<CalMethod> |> Option.defaultValue CalMethod.PUBLISH
-            events = events |> Seq.toList
-        }
+    {
+        version = cal.values.["VERSION"] |> Decimal.Parse
+        prodid = cal.values.["PRODID"] |> parseProduct
+        calScale = cal.values.["CALSCALE"] |> fromString<CalScale> |> Option.defaultValue CalScale.GREGORIAN
+        method = cal.values.["METHOD"] |> fromString<CalMethod> |> Option.defaultValue CalMethod.PUBLISH
+        events = events
+    }
